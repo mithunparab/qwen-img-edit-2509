@@ -13,6 +13,7 @@ RUN python3 /tmp/download_models.py && rm /tmp/download_models.py
 
 COPY handler.py /home/user/app/handler.py
 
+
 ENV PYTHONUNBUFFERED=1
 ENV ENABLE_COMPILE=false
 
