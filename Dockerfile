@@ -2,7 +2,7 @@ FROM registry.hf.space/linoyts-qwen-image-edit-2509-fast:latest
 
 RUN pip install --no-cache-dir runpod
 
-RUN mkdir -p /app/models && chmod -R 777 /app/models
+RUN chmod -R 777 /app && mkdir -p /app/models
 
 ENV HF_HOME=/app/models
 ENV TRANSFORMERS_CACHE=/app/models
