@@ -11,10 +11,10 @@ ENV HF_HUB_CACHE=/home/user/app/models
 RUN python3 -c "from huggingface_hub import snapshot_download; \
     snapshot_download('Qwen/Qwen-Image-Edit-2509', \
     cache_dir='/home/user/app/models', \
-    allow_patterns=['*.bf16','*.json','*.py','*.txt','*.bin']); \
+    ignore_patterns=['*.fp16*', '*.fp32*', '*.onnx', '*.gguf']); \
     snapshot_download('lightx2v/Qwen-Image-Lightning', \
     cache_dir='/home/user/app/models', \
-    allow_patterns=['*.bf16','*.json','*.py','*.txt','*.bin'])"
+    allow_patterns=['*bf16.safetensors', '*.json'])"
 
 COPY handler.py /home/user/app/handler.py
 
