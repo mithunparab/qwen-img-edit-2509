@@ -8,7 +8,16 @@ ENV HF_HOME=/home/user/app/models
 ENV TRANSFORMERS_CACHE=/home/user/app/models
 ENV HF_HUB_CACHE=/home/user/app/models
 
-RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download('lightx2v/Qwen-Image-Lightning', cache_dir='/home/user/app/models', allow_patterns=['Qwen-Image-Lightning-8steps-V2.0-bf16.safetensors', '*.json', 'README.md'])"
+RUN python3 -c "from huggingface_hub import snapshot_download; \
+    print('Downloading Qwen-Image-Edit-2509 (~41GB)...'); \
+    snapshot_download('Qwen/Qwen-Image-Edit-2509', \
+    cache_dir='/home/user/app/models', \
+    allow_patterns=['*.safetensors', '*.json', '*.txt', '*.model', 'config.json']); \
+    print('Downloading Qwen-Image-Lightning LoRA (~850MB)...'); \
+    snapshot_download('lightx2v/Qwen-Image-Lightning', \
+    cache_dir='/home/user/app/models', \
+    allow_patterns=['Qwen-Image-Lightning-8steps-V2.0-bf16.safetensors', '*.json', 'README.md']); \
+    print('All models downloaded successfully!')"
 
 COPY handler.py /home/user/app/handler.py
 
