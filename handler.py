@@ -70,7 +70,7 @@ def load_model():
         print("Loading LoRA weights...")
         pipe.load_lora_weights(
             "lightx2v/Qwen-Image-Lightning",
-            weight_name="Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V2.0-bf16.safetensors",
+            weight_name="Qwen-Image-Lightning-8steps-V2.0-bf16.safetensors",
             cache_dir=MODELS_DIR
         )
         pipe.fuse_lora()
