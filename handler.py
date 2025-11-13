@@ -16,8 +16,23 @@ from qwenimage.qwen_fa3_processor import QwenDoubleStreamAttnProcessorFA3
 pipe = None
 MODELS_DIR = "/home/user/app/models"
 
+CUSTOM_OPTION_VALUE = "__custom__"
+
+CAMERA_OPTIONS = [
+    {"cn": "镜头方向左回转45度", "en": "Rotate camera 45° left"},
+    {"cn": "镜头向右回转45度", "en": "Rotate camera 45° right"},
+    {"cn": "镜头方向左回转90度", "en": "Rotate camera 90° left"},
+    {"cn": "镜头向右回转90度", "en": "Rotate camera 90° right"},
+    {"cn": "将镜头转为俯视", "en": "Switch to top-down view"},
+    {"cn": "将镜头转为仰视", "en": "Switch to low-angle view"},
+    {"cn": "将镜头转为特写镜头", "en": "Switch to close-up lens"},
+    {"cn": "将镜头转为中近景镜头", "en": "Switch to medium close-up lens"},
+    {"cn": "将镜头转为拉远镜头", "en": "Switch to zoom out lens"},
+]
+
+CAMERA_CN_MAP = {item["en"]: item["cn"] for item in CAMERA_OPTIONS}
+
 def load_model():
-    """Loads the QwenImageEditPlusPipeline with optimizations."""
     global pipe
     if pipe is not None:
         return pipe
@@ -35,7 +50,6 @@ def load_model():
     enable_compile = os.environ.get("ENABLE_COMPILE", "false").lower() == "true"
     
     print(f"Loading model from cache directory: {MODELS_DIR}")
-    print(f"Torch compile: {'enabled' if enable_compile else 'disabled (set ENABLE_COMPILE=true to enable)'}")
     
     scheduler_config = {
         "base_image_seq_len": 256, 
@@ -67,14 +81,22 @@ def load_model():
         pipe.transformer.__class__ = QwenImageTransformer2DModel
         pipe.transformer.set_attn_processor(QwenDoubleStreamAttnProcessorFA3())
         
-        print("Loading LoRA weights...")
+        print("Loading and fusing existing Lightning LoRA weights...")
         pipe.load_lora_weights(
             "lightx2v/Qwen-Image-Lightning",
             weight_name="Qwen-Image-Lightning-8steps-V2.0-bf16.safetensors",
             cache_dir=MODELS_DIR
         )
         pipe.fuse_lora()
-        print("LoRA weights fused successfully.")
+
+        print("Loading and fusing Multi-Angle LoRA weights...")
+        pipe.load_lora_weights(
+            "dx8152/Qwen-Edit-2509-Multiple-angles",
+            weight_name="镜头转换.safetensors",
+            cache_dir=MODELS_DIR
+        )
+        pipe.fuse_lora()
+        print("All LoRA weights fused successfully.")
         
         if enable_compile:
             print("Applying pipeline optimizations (torch.compile)...")
@@ -95,34 +117,15 @@ def load_model():
     return pipe
 
 def base64_to_pil(base64_string):
-    """Decode base64 string to PIL Image"""
     image_bytes = base64.b64decode(base64_string)
     return Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
 def pil_to_base64(pil_image):
-    """Encode PIL Image to base64 string"""
     buffered = io.BytesIO()
     pil_image.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 def handler(job):
-    """
-    RunPod serverless handler function.
-    
-    Expected input format:
-    {
-        "input": {
-            "images": ["base64_string1", "base64_string2", ...],
-            "prompt": "make it beautiful",
-            "seed": 42,
-            "true_guidance_scale": 1.0,
-            "num_inference_steps": 8,
-            "num_outputs": 1,
-            "height": None,
-            "width": None
-        }
-    }
-    """
     global pipe
     
     if pipe is None:
@@ -138,7 +141,14 @@ def handler(job):
     if not images_b64 and 'image' in job_input:
         images_b64 = [job_input['image']]
     
-    prompt = job_input.get('prompt', 'make it beautiful')
+    extra_prompt_input = job_input.get('prompt', 'make it beautiful') 
+    
+    camera_work_option = job_input.get('camera_work_option', None)
+    custom_camera_prompt = job_input.get('custom_camera_prompt', None)
+
+    # Initialize negative_prompt to a space string as used by the original library's pipeline default
+    negative_prompt = job_input.get('negative_prompt', ' ') 
+
     seed = job_input.get('seed', None)
     true_guidance_scale = float(job_input.get('true_guidance_scale', 1.0))
     num_inference_steps = int(job_input.get('num_inference_steps', 8))
@@ -155,14 +165,34 @@ def handler(job):
         input_images = [base64_to_pil(img_b64) for img_b64 in images_b64]
     except Exception as e:
         return {"error": f"Failed to decode input images: {str(e)}"}
-    
-    print(f"Processing {len(input_images)} image(s) | Prompt: '{prompt}' | Seed: {seed} | Steps: {num_inference_steps}")
+
+    is_single_image = len(input_images) == 1
+    final_prompt = extra_prompt_input
+
+    if is_single_image and camera_work_option:
+        base_cn = None
+        
+        if camera_work_option == CUSTOM_OPTION_VALUE:
+            base_cn = (custom_camera_prompt or "").strip()
+        elif camera_work_option in CAMERA_CN_MAP:
+            base_cn = CAMERA_CN_MAP[camera_work_option]
+        
+        if base_cn:
+            final_prompt = f"{base_cn} {extra_prompt_input}".strip()
+            print(f"Using Camera Work Prompt (Translated): '{base_cn}' + Extra: '{extra_prompt_input}'")
+        else:
+            print(f"Camera option '{camera_work_option}' not recognized/valid. Using default prompt.")
+    else:
+        if not is_single_image and camera_work_option:
+            print("Multi-image detected. Bypassing camera work prompt translation.")
+        
+    print(f"Final Prompt for pipe: '{final_prompt}' | Negative Prompt: '{negative_prompt}' | Seed: {seed} | Steps: {num_inference_steps}")
     
     try:
         output_images = pipe(
             image=input_images if input_images else None,
-            prompt=prompt,
-            negative_prompt=" ",
+            prompt=final_prompt,
+            negative_prompt=negative_prompt,
             height=height,
             width=width,
             num_inference_steps=num_inference_steps,
@@ -176,7 +206,7 @@ def handler(job):
         result = {
             "images": output_b64_list,
             "seed": seed,
-            "version": "2.0"
+            "version": "2.1"
         }
         
         if len(output_b64_list) == 1:
