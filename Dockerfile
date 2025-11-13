@@ -17,6 +17,10 @@ RUN python3 -c "from huggingface_hub import snapshot_download; \
     snapshot_download('lightx2v/Qwen-Image-Lightning', \
     cache_dir='/home/user/app/models', \
     allow_patterns=['Qwen-Image-Lightning-8steps-V2.0-bf16.safetensors', '*.json', 'README.md']); \
+    print('Downloading Multi-Angle LoRA (~850MB)...'); \
+    snapshot_download('dx8152/Qwen-Edit-2509-Multiple-angles', \
+    cache_dir='/home/user/app/models', \
+    allow_patterns=['镜头转换.safetensors', '*.json', 'README.md']); \
     print('All models downloaded successfully!')"
 
 COPY handler.py /home/user/app/handler.py
